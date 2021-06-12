@@ -177,7 +177,7 @@ void clearBlock(const Context* context, int num) {
  * @m : 原始文件要编码的冗余块数目
  ************************************************************************/
 void encodeFile(const Context* context, int n, int m) {
-	int blen, i, num, offset;
+	int blen, i , j , k ,  num, offset;
 	UInt8_t buffer[BUF_LEN];
 	char name[NAME_LEN];
 	FILE* pm;
@@ -186,7 +186,7 @@ void encodeFile(const Context* context, int n, int m) {
 		return;
 	}
 	initMatrix(n, m);
-	blen = GET_BLOCK_SIZE(context->flen, n);
+	blen = GET_BLOCK_SIZE(context->flen, n);     //数据块的字节数
 
 	// 在编码过程中使用到的内存资源，m个冗余块对应分配m个数组
 	UInt8_t** c = (UInt8_t**)malloc(sizeof(int*) * m);
@@ -195,22 +195,60 @@ void encodeFile(const Context* context, int n, int m) {
 		memset(c[i], 0, sizeof(UInt8_t) * blen);
 	}
 
+	//为什么编码速度如此之慢34KB/s，这里做一个实验：先把文件数据读到数组里，从这个数组开始编码，看看时间会如何变换
+	UInt8_t** data_array = (UInt8_t**)malloc(sizeof(int*) * n);
+	for (i = 0; i < n; ++i) {
+		data_array[i] = (UInt8_t*)malloc(sizeof(UInt8_t) * blen);
+		memset(data_array[i], 0, sizeof(UInt8_t) * blen);
+	}
+
+	for (i = 0; i < n; ++i) {
+		fread(data_array[i], sizeof(UInt8_t), blen, pf);
+	}
+
 	// 每次编码前清除原有的块
 	clearBlock(context, m + n);
 
+	printf("读取文件阶段一完成\n");
+	start = clock();
+	printf("编码开始的时间为%f ms\n", double(start));
+	offset = 0;
+	for (i = 0; i < n; ++i) {                  //原始块
+		for (j = 0; j < m; ++j) {			   //冗余块
+			for (k = 0; k < blen; ++k) {	   //
+
+				xorMulArr(g_matrix.m_data[j][i], data_array[i] + k, c[j] + k, 1);
+			}
+			
+		}
+		
+	}
+	
+	finish = clock();
+
+	printf("编码结束的时间为%f ms\n", double(finish));
+	printf("编码时间为%f ms\n", double(finish - start));
+	printf("编码速度为%f KB/s\n", double(30301000 / (finish - start)));
+
+
 	// 从原始文件里读数据，并做分割和编码处理
 	// 每次读入到buffer中的数据，由dealbuffer来处理
-	start=clock();
-	offset = 0;
-	while (num = fread(buffer, sizeof(UInt8_t), BUF_LEN, pf)) {
-		dealbuffer(context, c, buffer, m, num, offset, blen);
-		offset += num * sizeof(UInt8_t);
+	//offset = 0;
+	//while (num = fread(buffer, sizeof(UInt8_t), BUF_LEN, pf)) {
+	//	dealbuffer(context, c, buffer, m, num, offset, blen);
+	//	offset += num * sizeof(UInt8_t);
+	//}
+
+	
+	
+
+	// 将数据分片写入磁盘
+	for (i = 0; i < n; ++i) {
+		sprintf_s(name, FORMAT, context->fname,  i);
+		pm = fopen(name, "wb");
+		fwrite(data_array[i], sizeof(UInt8_t), blen, pm);
+		fclose(pm);
 	}
-	finish=clock();
-	printf("编码开始的时间为%f ms\n",double(start));
-	printf("编码结束的时间为%f ms\n",double(finish));
-	printf("编码时间为%f ms\n",double(finish-start));
-	printf("编码速度为%f KB/s\n", double (30301000/(finish - start)));
 
 	// 将编码得到的冗余块写入磁盘
 	for (i = 0; i < m; ++i) {
@@ -225,6 +263,11 @@ void encodeFile(const Context* context, int n, int m) {
 		free(c[i]);
 	}
 	free(c);
+
+	for (i = 0; i < n; ++i) {
+		free(data_array[i]);
+	}
+	free(data_array);
 	fclose(pf);
 }
 
@@ -498,7 +541,7 @@ int main(void) {
 	char name2[NAME_LEN];
 	// 初始化伽罗华域
 	galoisEightBitInit();
-	galois8_parallel_tableInit();
+//	galois8_parallel_tableInit();
 
 	
 
@@ -506,17 +549,16 @@ int main(void) {
 	Context context;
 	context.fname = "z_back.mp4";
 	FILE* pf = fopen(context.fname, "r+b");
-//	printf("111111111111!\n");
 	if (pf==NULL) {
 		return 1;
 	}
-	printf("文件读取成功\n");
-	printf("开始编码\n");
-	fseek(pf, 0, SEEK_END);
+	printf("开始读取文件\n");
+	fseek(pf, 0, SEEK_END);        //文件的字节数
 	context.flen = ftell(pf);
 	if (fclose(pf)) {
 		printf("fclose error!\n");
 	}
+	printf("读取文件阶段一完成\n");
 	 //编码
 	encodeFile(&context, 8, 2);
 	printf("编码结束了\n");
