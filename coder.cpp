@@ -12,7 +12,7 @@ const int NAME_LEN = 32;
 const char* FORMAT = "%s_%d.dat";
 matrix_t g_matrix;
 
-clock_t start, finish;
+clock_t start, finish, tempclock;
 
 __m128i ax ;
 __m128i bx ;
@@ -209,9 +209,10 @@ void encodeFile(const Context* context, int n, int m) {
 	// 每次编码前清除原有的块
 	clearBlock(context, m + n);
 
-	printf("读取文件阶段一完成\n");
+	printf("读取文件阶段二完成\n");
+	printf("编码开始\n");
 	start = clock();
-	printf("编码开始的时间为%f ms\n", double(start));
+	
 	offset = 0;
 	for (i = 0; i < n; ++i) {                  //原始块
 		for (j = 0; j < m; ++j) {			   //冗余块
@@ -225,10 +226,11 @@ void encodeFile(const Context* context, int n, int m) {
 	}
 	
 	finish = clock();
-
+	printf("编码结束了\n");
+	printf("编码开始的时间为%f ms\n", double(start));
 	printf("编码结束的时间为%f ms\n", double(finish));
 	printf("编码时间为%f ms\n", double(finish - start));
-	printf("编码速度为%f KB/s\n", double(30301000 / (finish - start)));
+	printf("编码速度为%f MB/s\n", double( (30301 * 1024) /  (1000 * double(finish - start))   )    );
 
 
 	// 从原始文件里读数据，并做分割和编码处理
@@ -507,6 +509,9 @@ void decodeFile(const Context* context, int n, int m) {
 		era[i] = (UInt8_t*)malloc(sizeof(UInt8_t) * blen);
 		memset(era[i], 0, sizeof(UInt8_t) * blen);
 	}
+
+	
+	start = clock();
 	fillerase(era, context->fname, 0, n, n, m);
 	fillerase(era, context->fname, n, n + m, n, m);
 
@@ -515,8 +520,15 @@ void decodeFile(const Context* context, int n, int m) {
 	A = createMatrix(ib, ic, lenb, lenc, n);
 	B = matrixGauss(&A);
 
+	tempclock = clock();
 	// 逆矩阵和era数组相乘，可计算得到丢失的普通快
 	buildBlock(&B, era, context->fname, ic, ib, lenb, lenc, blen, n);
+	finish = clock();
+	printf("解码时间为%f ms\n", double(finish - start));
+	printf("核心解码时间为%f ms\n", double(finish - tempclock));
+	printf("解码速度为%f MB/s\n", double((30301 * 1024) / (1000 * double(finish - start))));
+	printf("核心解码速度为%f MB/s\n", double((30301 * 1024) / (1000 * double(finish - tempclock))));
+
 
 	// 构造原始文件
 	buildFile(context, n);
@@ -561,7 +573,7 @@ int main(void) {
 	printf("读取文件阶段一完成\n");
 	 //编码
 	encodeFile(&context, 8, 2);
-	printf("编码结束了\n");
+	
 	
 	printf("input the delete file's index : ");
 	fflush(stdin);
